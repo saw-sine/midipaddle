@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<title></title>
+	<style type="text/css">
+	</style>
+    <script type="text/javascript">
+    const ModeWait  = 0;
+    const ModePlay  = 1;
+
+    const COLOR_BG  = "#00F";
+    const COLOR_FG  = "#FFF";
+
+    var playMode = ModeWait;
+    var rcvCh = -1;
+    var rcvNum = -1;
+    var cnvs;
+    var ctx;
+    var curScene;
+
+    var myPaddle;
+    var ball;
+
+	window.onload = function setup() {
+		midiTest();
+    
+        cnvs = document.getElementById("cnvs");
+        ctx  = cnvs.getContext("2d");
+        curScene = new SceneWait();
+        myPaddle = new Paddle();
+        ball = new Ball();
+		drawScreen();
+    }
+    
+    class SceneBase {
+        constructor() {
+        }
+        frame() {
+        }
+        draw() {
+            ctx.fillStyle = COLOR_BG;
+		    ctx.fillRect(0, 0, cnvs.width, cnvs.height);
+            
+        }
+    }
+    class SceneWait extends SceneBase {
+        constructor() {
+            super();
+            console.log("scene wait");
+        }
+        frame() {
+        }
+        draw() {
+            super.draw();
+
+            let cx = cnvs.width / 2;
+            let cy = cnvs.height / 2;
+            ctx.textAlign = "center";
+            ctx.fillStyle = COLOR_FG;
+            ctx.fillText("Control Change 受信待ち", cx, cy);
+        }
+    }
+    class ScenePlay extends SceneBase {
+        mMltVal;
+        constructor() {
+            super();
+            this.mMltVal = 1;
+            console.log("scene play");
+        }
+        frame() {
+            if (! ball.mAlive) {
+                ball.set(Math.random(), this.mMltVal, Math.PI * Math.random() / 2 + Math.PI / 4);
+                this.mMltVal *= 1.1;
+                if (this.mMltVal > 8) {
+                    this.mMltVal = 1;
+                }
+            } else {
+                ball.move(0);
+                myPaddle.proc(ball);
+            }
+        }
+        draw() {
+            super.draw();
+            ball.draw();
+            myPaddle.draw();
+        }
+    }
+    class Ball {
+        mAlive;
+        mCx;
+        mCy;
+        mVx;
+        mVy;
+        mWidth;
+        mHeight;
+        constructor() {
+            this.mAlive = false;
+            this.mWidth = cnvs.width / 160;
+            this.mHeight = this.mWidth;
+            this.mCx = cnvs.width / 2;
+            this.mCy = -this.mHeight;
+            this.mVx = this.mVy = 0;
+        }
+        move(dur) {
+            this.mCx = this.mCx + this.mVx;
+            this.mCy = this.mCy + this.mVy;
+            if (this.mCy > cnvs.height - this.mHeight / 2) {
+                this.mAlive = false;
+                return;
+            } else if (this.mCy < this.mHeight / 2) {
+                this.reflection();
+            }
+            if (this.mCx < this.mWidth / 2) {
+                this.mCx = this.mWidth / 2;
+                this.mVx = -this.mVx;
+            } else if (this.mCx > cnvs.width - this.mWidth / 2) {
+                this.mCx = cnvs.width - this.mWidth / 2;
+                this.mVx = -this.mVx;
+            }
+            //console.log("(cx, cy) = (" + this.mCx + ", "+ this.mCy+")");
+        }
+        set(x, vv, rad) {
+            this.mAlive = true;
+            this.mCx = x * (cnvs.width - this.mWidth) + this.mWidth / 2;
+            this.mCy = this.mHeight / 2;
+            this.mVx = vv * Math.cos(rad);
+            this.mVy = vv * Math.sin(rad);
+            console.log("(vx, vy) = (" + this.mVx + ", "+ this.mVy+")");
+        }
+        reflection() {
+            this.mCy = this.mCy - this.mVy;
+            this.mVy = -1.1 * this.mVy;
+            this.mVx =  1.1 * this.mVx;
+            if (this.mVy > 8) { this.mVy = 8; }
+            else if (this.mVy < -8) { this.mVy = -8; }
+        }
+        draw() {
+            if (this.mAlive) {
+                ctx.fillStyle = COLOR_FG;
+                ctx.fillRect(this.mCx - this.mWidth / 2, this.mCy - this.mHeight, this.mWidth, this.mHeight);
+            }
+        }
+    }
+    class Paddle {
+        mMx;
+        mMy;
+        mWidth;
+        mHeight;
+        constructor() {
+            this.mMx = cnvs.width / 2;
+            this.mWidth = cnvs.width / 10;
+            this.mHeight = cnvs.height / 30;
+            this.mMy = cnvs.height - this.mHeight * 2;
+        }
+        draw() {
+            ctx.fillStyle = COLOR_FG;
+            ctx.fillRect(this.mMx - this.mWidth / 2, this.mMy - this.mHeight, this.mWidth, this.mHeight);
+        }
+        setCtrl(cx) {
+            this.mMx = (cnvs.width - this.mWidth) * cx + this.mWidth / 2;
+        }
+        proc(ball) {
+            if (ball.mCx + ball.mWidth / 2 < this.mMx - this.mWidth / 2 ||
+                this.mMx + this.mWidth / 2 < ball.mCx - ball.mWidth / 2 ||
+                ball.mCy + ball.mHeight / 2 < this.mMy - this.mHeight / 2 ||
+                this.mMy + this.mHeight / 2 < ball.mCy - ball.mHeight / 2) {
+                    return;
+            }
+            ball.reflection();
+        }
+    }
+	
+	function drawScreen() {
+        requestAnimationFrame(drawScreen);
+        curScene.frame();
+        curScene.draw();
+	}
+	
+	function midiTest() {
+		navigator.requestMIDIAccess( { sysex: true } ).then(midiSuccess, midiFailure);
+	}
+	function midiSuccess(midiAccess) {
+		m = midiAccess;
+		
+		if (typeof m.inputs === "function") {
+			inputs  = m.inputs();
+			outputs = m.outputs();
+		} else {
+			var inputIterator = m.inputs.values();
+			inputs = [];
+			for (var o = inputIterator.next(); !o.done; o = inputIterator.next()) {
+				inputs.push(o.value)
+			}
+			
+			var outputIterator = m.outputs.values();
+			outputs = [];
+			for (var o = outputIterator.next(); !o.done; o = outputIterator.next()) {
+				outputs.push(o.value)
+			}
+		}
+		
+		var opt;
+		opt = '';
+		for (var i = 0; i < inputs.length; i++) {
+			opt += '<option value="">' + inputs[i].name + '</option>';
+		}
+		document.getElementById("midiin").innerHTML = opt;
+		
+		opt = '';
+		for (var i = 0; i < outputs.length; i++) {
+			opt += '<option value="">' + outputs[i].name + '</option>';
+		}
+		document.getElementById("midiout").innerHTML = opt;
+		
+		midiSetOutputDeviceSelect(0);
+		midiSetInputDeviceSelect(0);
+		
+		requestAnimationFrame(drawScreen);
+	}
+	function midiFailure(midiError) {
+		info = "midi not ready.";
+		
+		timer = setTimeout(loop, 1000);
+		requestAnimationFrame(drawScreen);
+	}
+	function midiSetOutputDeviceSelect(sel){
+		if(m != null) {
+			if(outputs.length > 0  && outputs.length > sel) {
+				output=outputs[sel];
+				info = "output:" + output;
+			}
+		}
+	}
+	function midiSetInputDeviceSelect(sel){
+		if(m != null) {
+			if(inputs.length > 0 && inputs.length > sel) {
+				input= inputs[sel];
+				input.onmidimessage = handleMIDIMessage;
+			}
+		}
+	}
+	function midiOutMessage(data1,data2,data3) {
+		if(output != null) output.send([data1, data2, data3], 0);
+	}
+	function midiOutSysEx(event) {
+		if (output != null) {
+			output.send(event.data, 0);
+		}
+	}
+	function handleMIDIMessage( event ) {
+		var str = null;
+		var i , k;
+		
+        if( event.data[0] == 0xFE) return;
+        switch (event.data[0] & 0xF0) {
+            case 0xB0:
+                if (rcvCh < 0) {
+                    rcvCh = event.data[0] & 0xF;
+                    rcvNum = event.data[1];
+                    curScene = new ScenePlay();
+                    console.log("rcvCh = " + rcvCh + ", rcvNum = " + rcvNum);
+                } else if (((event.data[0] & 0xF) == rcvCh) && (event.data[1] == rcvNum)) {
+                    myPaddle.setCtrl(event.data[2] / 127);
+                }
+                break;
+        }
+	}
+	</script>
+</head>
+
+<body style="margin:0;background-color:#ffffff">
+	<div>
+		<label>MIDI IN </label><select id="midiin"></select>
+		<label>MIDI OUT </label><select id="midiout"></select>
+    </div>
+	<div><canvas id="cnvs" width="640" height="480"></canvas></div>
+</body>
+</html>
